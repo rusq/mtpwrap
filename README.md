@@ -1,2 +1,2 @@
 # mtpwrap
-MTProto library wrapper
+MTProto library wrapper.
