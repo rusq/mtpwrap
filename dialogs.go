@@ -108,3 +108,27 @@ func (c *Client) CreateChat(ctx context.Context, title string, userIDs ...int64)
 	}
 	return nil
 }
+
+func (c *Client) FindChat(ctx context.Context, id int64) (*tg.Chat, error) {
+	chat, err := c.GetEntities(ctx, FilterAnd(FilterChat(), FilterPeer(id)))
+	if err != nil {
+		return nil, err
+	}
+	if len(chat) == 0 {
+		return nil, storage.ErrPeerNotFound
+	}
+	return chat[0].(*tg.Chat), nil
+}
+
+// FindChannel returns a channel with ID.
+func (c *Client) FindChannel(ctx context.Context, id int64) (*tg.Channel, error) {
+	chans, err := c.GetEntities(ctx, FilterAnd(FilterChannel(), FilterPeer(id)))
+	if err != nil {
+		return nil, err
+	}
+	if len(chans) == 0 {
+		return nil, storage.ErrPeerNotFound
+	}
+
+	return chans[0].(*tg.Channel), nil
+}
