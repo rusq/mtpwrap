@@ -217,3 +217,8 @@ func (c *Client) Run(ctx context.Context, fn func(context.Context, *telegram.Cli
 		return fn(ctx, c.cl)
 	})
 }
+
+// Client returns the underlying telegram client.
+func (c *Client) Client() *telegram.Client {
+	return c.cl
+}
