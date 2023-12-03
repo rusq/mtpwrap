@@ -86,7 +86,6 @@ func getCodeSpecifics(code *tg.AuthSentCode) (string, int) {
 	case *tg.AuthSentCodeTypeFlashCall:
 		return fmt.Sprintf("The code will be sent via a flash phone call, that will be closed immediately.\nThe phone code will then be the phone number itself, just make sure that the\nphone number matches the specified pattern: %q (%d characters)", val.GetPattern(), len(val.GetPattern())), len(val.GetPattern())
 	case *tg.AuthSentCodeTypeMissedCall:
-
 		return fmt.Sprintf("The code will be sent via a flash phone call, that will be closed immediately.\nThe last digits of the phone number that calls are the code that must be entered.\nThe phone call prefix will be: %s and the length of the code is %d", val.GetPrefix(), val.GetLength()), val.GetLength()
 	default:
 		return "UNSUPPORTED AUTH TYPE", 0

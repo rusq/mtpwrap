@@ -4,7 +4,6 @@ package mtpwrap
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"time"
 
@@ -122,7 +121,7 @@ func WithDebug(enable bool) Option {
 	}
 }
 
-func New(appID int, appHash string, opts ...Option) (*Client, error) {
+func New(ctx context.Context, appID int, appHash string, opts ...Option) (*Client, error) {
 	// Client with the default parameters
 	var c = Client{
 		cache:   gcache.New(defCacheSz).LFU().Expiration(defCacheEvict).Build(),
@@ -141,7 +140,7 @@ func New(appID int, appHash string, opts ...Option) (*Client, error) {
 	c.telegramOpts.Middlewares = append(c.telegramOpts.Middlewares, c.waiter)
 	if (appID == 0 || appHash == "") && c.creds.IsAvailable() {
 		var err error
-		appID, appHash, err = c.loadCredentials()
+		appID, appHash, err = c.loadCredentials(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -152,17 +151,16 @@ func New(appID int, appHash string, opts ...Option) (*Client, error) {
 	return &c, nil
 }
 
-func (c *Client) loadCredentials() (int, string, error) {
+func (c *Client) loadCredentials(ctx context.Context) (int, string, error) {
 	var err error
 	apiID, apiHash, err := c.creds.Load()
 	if err == nil && apiID > 0 && apiHash != "" {
 		return apiID, apiHash, nil
 	}
 	Log.Debugf("warning: error loading credentials file, requesting manual input: %s", err)
-	apiID, apiHash, err = c.auth.GetAPICredentials(context.Background())
+	apiID, apiHash, err = c.auth.GetAPICredentials(ctx)
 	if err != nil {
-		fmt.Println()
-		if errors.Is(io.EOF, err) {
+		if errors.Is(err, io.EOF) {
 			return 0, "", errors.New("exit")
 		}
 		return 0, "", err
