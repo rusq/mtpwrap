@@ -11,6 +11,40 @@ import (
 	"github.com/gotd/td/tg"
 )
 
+// DialogType represents the dialog type. See [API Reference].
+//
+// [API Reference]: https://core.telegram.org/api/channel
+//
+//go:generate stringer -type=DialogType -trimprefix=D
+type DialogType int
+
+const (
+	DUnknown DialogType = iota
+	DGroup
+	DMegagroup
+	DGigagroup
+	DChannel
+)
+
+// DlgType returns the type of the underlying dialog.
+func DlgType(e Entity) DialogType {
+	// we examine the underlying type and flags on it to figure out the type.
+	switch tgt := e.(type) {
+	case *tg.Channel:
+		switch {
+		case tgt.Broadcast:
+			return DChannel
+		case tgt.Megagroup:
+			return DMegagroup
+		case tgt.Gigagroup:
+			return DGigagroup
+		}
+	case *tg.Chat:
+		return DGroup
+	}
+	return DUnknown
+}
+
 // GetChats retrieves the account chats.
 func (c *Client) GetChats(ctx context.Context) ([]Entity, error) {
 	return c.GetEntities(ctx, FilterChat())
@@ -28,7 +62,7 @@ func (c *Client) GetEntities(ctx context.Context, filterFn FilterFunc) ([]Entity
 	ctx, task := trace.NewTask(ctx, "GetEntities")
 	defer task.End()
 
-	if err := c.ensureStoragePopulated(ctx); err != nil {
+	if err := c.ensureDlgStoragePopulated(ctx); err != nil {
 		return nil, err
 	}
 
@@ -53,9 +87,9 @@ func (c *Client) GetEntities(ctx context.Context, filterFn FilterFunc) ([]Entity
 	return ee, nil
 }
 
-// ensureStoragePopulated ensures that the peer storage has been populated within
-// defCacheEvict duration.
-func (c *Client) ensureStoragePopulated(ctx context.Context) error {
+// ensureDlgStoragePopulated ensures that the dialog storage is populated
+// within defCacheEvict duration.
+func (c *Client) ensureDlgStoragePopulated(ctx context.Context) error {
 	if cached, err := c.cache.Get(cacheDlgStorage); err == nil && cached.(bool) {
 		trace.Log(ctx, "cache", "hit")
 		return nil
@@ -109,6 +143,7 @@ func (c *Client) CreateChat(ctx context.Context, title string, userIDs ...int64)
 	return nil
 }
 
+// FindChat returns a chat with ID.
 func (c *Client) FindChat(ctx context.Context, id int64) (*tg.Chat, error) {
 	chat, err := c.GetEntities(ctx, FilterAnd(FilterChat(), FilterPeer(id)))
 	if err != nil {
