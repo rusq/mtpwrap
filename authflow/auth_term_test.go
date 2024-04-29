@@ -89,7 +89,11 @@ func TestTermAuth_Phone(t *testing.T) {
 				noSignUp: tt.fields.noSignUp,
 				phone:    tt.fields.phone,
 			}
-			got, output, err := captureOutput(t, tt.input, a.Phone)
+
+			cap := StartCapture(t, tt.input)
+			got, err := a.Phone(tt.args.in0)
+			output := cap.StopCapture()
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("TermAuth.Phone() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -100,20 +104,25 @@ func TestTermAuth_Phone(t *testing.T) {
 	}
 }
 
-func captureOutput[T any](t *testing.T, input string, f func(ctx context.Context) (T, error)) (T, string, error) {
-	t.Helper()
-	// Save current stdout and stderr
-	var (
-		oldOut = hOutput
-		oldIn  = hInput
-	)
+type captor struct {
+	r      *os.File
+	w      *os.File
+	oldOut *os.File
+	oldIn  *os.File
+}
 
-	// stdout pipe
+// StartCapture starts capturing output. If input is not empty, it will also
+// capture input and write it to the program's stdin.
+func StartCapture(t *testing.T, input string) *captor {
+	t.Helper()
+
 	r, w, _ := os.Pipe()
+	oldOut := hOutput
+	oldIn := hInput
+
 	hOutput = w
 
 	if len(input) > 0 {
-		// stdin pipe
 		r2, w2, _ := os.Pipe()
 		hInput = r2
 		go func() {
@@ -131,15 +140,66 @@ func captureOutput[T any](t *testing.T, input string, f func(ctx context.Context
 		}()
 	}
 
-	// Run function
-	out, err := f(context.Background())
+	return &captor{
+		r:      r,
+		w:      w,
+		oldOut: oldOut,
+		oldIn:  oldIn,
+	}
+}
 
-	// Read output
-	w.Close()
+// StopCapture stops capturing and returns the captured output
+func (c *captor) StopCapture() string {
+	c.w.Close()
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
-	os.Stdout = oldOut
-	os.Stdin = oldIn
+	io.Copy(&buf, c.r)
+	os.Stdout = c.oldOut
+	os.Stdin = c.oldIn
+	return buf.String()
+}
 
-	return out, buf.String(), err
+func Test_readln(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    string
+		wantErr bool
+	}{
+		{
+			"empty input",
+			"\n",
+			"",
+			false,
+		},
+		{
+			"valid input",
+			"123\n",
+			"123",
+			false,
+		},
+		{
+			"valid input with spaces",
+			"  123  \n",
+			"123",
+			false,
+		},
+		{
+			"multiple lines (reads only first line)",
+			"123\n456\n",
+			"123",
+			false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := readln(strings.NewReader(tt.input))
+			if (err != nil) != tt.wantErr {
+				t.Errorf("readln() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("readln() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }

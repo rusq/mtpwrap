@@ -106,7 +106,7 @@ func (a TermAuth) Password(ctx context.Context) (string, error) {
 	return readpass(ctx, hInput)
 }
 
-func getCodeSpecifics(code *tg.AuthSentCode) (string, int) {
+func codeSpecifics(code *tg.AuthSentCode) (string, int) {
 	digits := func(where string, n int) string {
 		return fmt.Sprintf("The code %s.\nEnter exactly %d digits.", where, n)
 	}
@@ -127,7 +127,7 @@ func getCodeSpecifics(code *tg.AuthSentCode) (string, int) {
 	}
 }
 
-func getCodeTimeout(code *tg.AuthSentCode) (string, time.Duration) {
+func codeTimeout(code *tg.AuthSentCode) (string, time.Duration) {
 	timeout, ok := code.GetTimeout()
 	if !ok {
 		return "", 30 * time.Minute
@@ -137,8 +137,8 @@ func getCodeTimeout(code *tg.AuthSentCode) (string, time.Duration) {
 }
 
 func (a TermAuth) Code(_ context.Context, code *tg.AuthSentCode) (string, error) {
-	codeHelp, length := getCodeSpecifics(code)
-	timeoutHelp, timeoutIn := getCodeTimeout(code)
+	codeHelp, length := codeSpecifics(code)
+	timeoutHelp, timeoutIn := codeTimeout(code)
 	timeout := time.Now().Add(timeoutIn)
 
 	var input string
