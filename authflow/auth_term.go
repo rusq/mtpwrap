@@ -96,7 +96,7 @@ func (a TermAuth) Phone(_ context.Context) (string, error) {
 func (a TermAuth) Password(ctx context.Context) (string, error) {
 	defer fmt.Fprintln(hOutput)
 	fmt.Fprintln(hOutput, "Enter 2FA password (won't be shown)")
-	fmt.Fprint(hOutput, "> ")
+	fmt.Fprint(hOutput, "2FA> ")
 	return readpass(ctx, hInput)
 }
 
@@ -141,7 +141,7 @@ func (a TermAuth) Code(_ context.Context, code *tg.AuthSentCode) (string, error)
 		if time.Now().After(timeout) {
 			return "", errors.New("operation timed out")
 		}
-		fmt.Printf("(i) TIP: %s\nEnter code%s: ", codeHelp, timeoutHelp)
+		fmt.Printf("(i) TIP: %s\nCODE%s> ", codeHelp, timeoutHelp)
 		input, err = readln(hInput)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
