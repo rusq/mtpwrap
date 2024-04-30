@@ -35,12 +35,18 @@ var (
 	ErrAlreadyRunning = errors.New("already running asynchronously, stop the running instance first")
 )
 
+// ErrAuth is returned if the authentication fails.
+type ErrAuth struct {
+	Err error
+}
+
 type Client struct {
 	cl *telegram.Client
 
-	cache   gcache.Cache
-	storage storage.PeerStorage
-	creds   credsStorage
+	cache     gcache.Cache
+	peerStrg  storage.PeerStorage
+	credsStrg credsStorage
+	creds     creds // API credentials
 
 	waiter     *floodwait.SimpleWaiter
 	waiterStop func()
@@ -89,7 +95,7 @@ func WithPeerStorage(s storage.PeerStorage) Option {
 		if s == nil {
 			return
 		}
-		c.storage = s
+		c.peerStrg = s
 	}
 }
 
@@ -102,7 +108,7 @@ func WithAuth(flow authflow.FullAuthFlow) Option {
 
 func WithApiCredsFile(path string) Option {
 	return func(c *Client) {
-		c.creds = credsStorage{filename: path}
+		c.credsStrg = credsStorage{filename: path}
 	}
 }
 
@@ -122,11 +128,11 @@ func WithDebug(enable bool) Option {
 	}
 }
 
-func New(appID int, appHash string, opts ...Option) (*Client, error) {
+func New(ctx context.Context, appID int, appHash string, opts ...Option) (*Client, error) {
 	// Client with the default parameters
 	var c = Client{
-		cache:   gcache.New(defCacheSz).LFU().Expiration(defCacheEvict).Build(),
-		storage: NewMemStorage(),
+		cache:    gcache.New(defCacheSz).LFU().Expiration(defCacheEvict).Build(),
+		peerStrg: NewMemStorage(),
 
 		auth:   authflow.TermAuth{}, // default is the terminal authentication
 		waiter: floodwait.NewSimpleWaiter(),
@@ -138,40 +144,44 @@ func New(appID int, appHash string, opts ...Option) (*Client, error) {
 		opt(&c)
 	}
 
+	var creds = creds{
+		ID:   appID,
+		Hash: appHash,
+	}
+
 	c.telegramOpts.Middlewares = append(c.telegramOpts.Middlewares, c.waiter)
-	if (appID == 0 || appHash == "") && c.creds.IsAvailable() {
+	if creds.IsEmpty() && c.credsStrg.IsAvailable() {
 		var err error
-		appID, appHash, err = c.loadCredentials()
+		creds, err = c.loadCredentials(ctx)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	c.cl = telegram.NewClient(appID, appHash, c.telegramOpts)
+	c.cl = telegram.NewClient(creds.ID, creds.Hash, c.telegramOpts)
 
 	return &c, nil
 }
 
-func (c *Client) loadCredentials() (int, string, error) {
+func (c *Client) loadCredentials(ctx context.Context) (creds, error) {
 	var err error
-	apiID, apiHash, err := c.creds.Load()
-	if err == nil && apiID > 0 && apiHash != "" {
-		return apiID, apiHash, nil
+	creds, err := c.credsStrg.Load()
+	if err == nil && !creds.IsEmpty() {
+		return creds, nil
 	}
 	Log.Debugf("warning: error loading credentials file, requesting manual input: %s", err)
-	apiID, apiHash, err = c.auth.GetAPICredentials(context.Background())
+	creds.ID, creds.Hash, err = c.auth.GetAPICredentials(ctx)
 	if err != nil {
 		fmt.Println()
 		if errors.Is(io.EOF, err) {
-			return 0, "", errors.New("exit")
+			return creds, errors.New("exit")
 		}
-		return 0, "", err
+		return creds, err
 	}
-	if err := c.creds.Save(apiID, apiHash); err != nil {
-		// not a fatal error
-		Log.Debugf("failed to save credentials: %s", err)
+	if creds.IsEmpty() {
+		return creds, errors.New("invalid credentials")
 	}
-	return apiID, apiHash, nil
+	return creds, nil
 }
 
 // Start starts the telegram session in goroutine
@@ -191,11 +201,33 @@ func (c *Client) Start(ctx context.Context) error {
 		if err := c.Stop(); err != nil {
 			Log.Debugf("error stopping: %s", err)
 		}
-		return err
+		return &ErrAuth{Err: err}
 	}
 	Log.Debug("auth success")
 
+	// try and save credentials now that we're sure they're correct.
+	if err := c.saveCreds(); err != nil {
+		// not a fatal error
+		Log.Printf("failed to save credentials: %s, but nevermind let's continue", err)
+	}
+
 	return nil
+}
+
+func (c *Client) saveCreds() error {
+	return c.credsStrg.Save(c.creds)
+}
+
+func (e *ErrAuth) Error() string {
+	return fmt.Sprintf("authentication failed: %s", e.Err)
+}
+
+func (e *ErrAuth) Unwrap() error {
+	return e.Err
+}
+
+func (e *ErrAuth) Is(err error) bool {
+	return errors.Is(e.Err, err)
 }
 
 func (c *Client) Stop() error {

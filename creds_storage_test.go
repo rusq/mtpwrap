@@ -14,13 +14,13 @@ func Test_encryptDecrypt(t *testing.T) {
 	)
 	var buf bytes.Buffer
 	cs := credsStorage{}
-	err := cs.write(&buf, ApiID, ApiHash)
+	err := cs.write(&buf, creds{ApiID, ApiHash})
 	assert.NoError(t, err)
 
-	gotID, gotHash, gotErr := cs.read(&buf)
+	got, gotErr := cs.read(&buf)
 	assert.NoError(t, gotErr)
-	assert.Equal(t, ApiID, gotID)
-	assert.Equal(t, ApiHash, gotHash)
+	assert.Equal(t, ApiID, got.ID)
+	assert.Equal(t, ApiHash, got.Hash)
 
 }
 
@@ -36,15 +36,15 @@ func FuzzWriteRead(f *testing.F) {
 	cs := credsStorage{}
 	f.Fuzz(func(t *testing.T, id int, hash string) {
 		var buf bytes.Buffer
-		err := cs.write(&buf, id, hash)
+		err := cs.write(&buf, creds{id, hash})
 		if err != nil {
 			return
 		}
-		gotID, gotHash, gotErr := cs.read(&buf)
+		got, gotErr := cs.read(&buf)
 		if gotErr != nil {
 			return
 		}
-		assert.Equal(t, id, gotID)
-		assert.Equal(t, hash, gotHash)
+		assert.Equal(t, id, got.ID)
+		assert.Equal(t, hash, got.Hash)
 	})
 }

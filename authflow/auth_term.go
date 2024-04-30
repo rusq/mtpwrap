@@ -17,12 +17,6 @@ import (
 	"golang.org/x/term"
 )
 
-type FullAuthFlow interface {
-	auth.UserAuthenticator
-
-	GetAPICredentials(ctx context.Context) (int, string, error)
-}
-
 var (
 	blink     = color.New(color.BlinkSlow)
 	italic    = color.New(color.Italic)
