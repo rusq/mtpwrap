@@ -17,12 +17,6 @@ import (
 	"golang.org/x/term"
 )
 
-type FullAuthFlow interface {
-	auth.UserAuthenticator
-
-	GetAPICredentials(ctx context.Context) (int, string, error)
-}
-
 var (
 	blink     = color.New(color.BlinkSlow)
 	italic    = color.New(color.Italic)
@@ -55,23 +49,58 @@ func NewTermAuth(phone string) TermAuth {
 	return TermAuth{phone: phone}
 }
 
+var (
+	hOutput = os.Stdout
+	hInput  = os.Stdin
+)
+
+const (
+	phoneWelcome = `Connected, please login to Telegram.
+
+Enter phone in international format, no spaces, for example +6422123456
+`
+	phonePrompt     = "PHONE> "
+	phoneInvalid    = "*** Invalid phone number, try again or press Ctrl+C to abort ***"
+	phoneMustIntl   = "*** Phone number must be in international format, starting with '+' ***"
+	phoneOnlyDigits = "*** Phone number must contain only digits and + sign. ***"
+)
+
 func (a TermAuth) Phone(_ context.Context) (string, error) {
-	clrscr(os.Stdout)
+	clrscr(hOutput)
 	if a.phone != "" {
 		return a.phone, nil
 	}
-	fmt.Printf("Connected, please login to Telegram.\n\n")
-	fmt.Print("Enter phone: ")
-	return readln(os.Stdin)
+	fmt.Fprint(hOutput, phoneWelcome)
+	for {
+		fmt.Fprint(hOutput, phonePrompt)
+		phone, err := readln(hInput)
+		if err != nil {
+			return "", err
+		}
+		if phone == "" {
+			fmt.Fprintln(hOutput, phoneInvalid)
+			continue
+		}
+		if !strings.HasPrefix(phone, "+") || len(phone) < 2 {
+			fmt.Fprintln(hOutput, phoneMustIntl)
+			continue
+		}
+		if _, err := strconv.Atoi(phone[1:]); err != nil {
+			fmt.Fprintln(hOutput, phoneOnlyDigits)
+			continue
+		}
+		return phone, nil
+	}
 }
 
 func (a TermAuth) Password(ctx context.Context) (string, error) {
-	defer fmt.Println()
-	fmt.Print("Enter 2FA password (won't be shown): ")
-	return readpass(ctx)
+	defer fmt.Fprintln(hOutput)
+	fmt.Fprintln(hOutput, "Enter 2FA password (won't be shown)")
+	fmt.Fprint(hOutput, "2FA> ")
+	return readpass(ctx, hInput)
 }
 
-func getCodeSpecifics(code *tg.AuthSentCode) (string, int) {
+func codeSpecifics(code *tg.AuthSentCode) (string, int) {
 	digits := func(where string, n int) string {
 		return fmt.Sprintf("The code %s.\nEnter exactly %d digits.", where, n)
 	}
@@ -86,14 +115,13 @@ func getCodeSpecifics(code *tg.AuthSentCode) (string, int) {
 	case *tg.AuthSentCodeTypeFlashCall:
 		return fmt.Sprintf("The code will be sent via a flash phone call, that will be closed immediately.\nThe phone code will then be the phone number itself, just make sure that the\nphone number matches the specified pattern: %q (%d characters)", val.GetPattern(), len(val.GetPattern())), len(val.GetPattern())
 	case *tg.AuthSentCodeTypeMissedCall:
-
 		return fmt.Sprintf("The code will be sent via a flash phone call, that will be closed immediately.\nThe last digits of the phone number that calls are the code that must be entered.\nThe phone call prefix will be: %s and the length of the code is %d", val.GetPrefix(), val.GetLength()), val.GetLength()
 	default:
 		return "UNSUPPORTED AUTH TYPE", 0
 	}
 }
 
-func getCodeTimeout(code *tg.AuthSentCode) (string, time.Duration) {
+func codeTimeout(code *tg.AuthSentCode) (string, time.Duration) {
 	timeout, ok := code.GetTimeout()
 	if !ok {
 		return "", 30 * time.Minute
@@ -103,8 +131,8 @@ func getCodeTimeout(code *tg.AuthSentCode) (string, time.Duration) {
 }
 
 func (a TermAuth) Code(_ context.Context, code *tg.AuthSentCode) (string, error) {
-	codeHelp, length := getCodeSpecifics(code)
-	timeoutHelp, timeoutIn := getCodeTimeout(code)
+	codeHelp, length := codeSpecifics(code)
+	timeoutHelp, timeoutIn := codeTimeout(code)
 	timeout := time.Now().Add(timeoutIn)
 
 	var input string
@@ -113,8 +141,8 @@ func (a TermAuth) Code(_ context.Context, code *tg.AuthSentCode) (string, error)
 		if time.Now().After(timeout) {
 			return "", errors.New("operation timed out")
 		}
-		fmt.Printf("(i) TIP: %s\nEnter code%s: ", codeHelp, timeoutHelp)
-		input, err = readln(os.Stdin)
+		fmt.Printf("(i) TIP: %s\nCODE%s> ", codeHelp, timeoutHelp)
+		input, err = readln(hInput)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return "", errors.New("login aborted")
@@ -133,7 +161,7 @@ func (a TermAuth) GetAPICredentials(ctx context.Context) (int, string, error) {
 	var id int
 	for {
 		fmt.Printf("Enter App '%s': ", param.Sprint(" api_id "))
-		sID, err := readln(os.Stdin)
+		sID, err := readln(hInput)
 		if err != nil {
 			return 0, "", err
 		}
@@ -144,7 +172,7 @@ func (a TermAuth) GetAPICredentials(ctx context.Context) (int, string, error) {
 		fmt.Println("*** Input error: api_id should be an integer")
 	}
 	fmt.Printf("Enter App '%s' (won't be shown): ", param.Sprint(" api_hash "))
-	hash, err := readpass(ctx)
+	hash, err := readpass(ctx, hInput)
 	fmt.Println()
 	if err != nil {
 		return 0, "", err
@@ -172,7 +200,7 @@ func instructions() {
 	fmt.Println()
 }
 
-func readln(r io.Reader) (string, error) {
+var readln = func(r io.Reader) (string, error) {
 	line, err := bufio.NewReader(r).ReadString('\n')
 	if err != nil {
 		return "", err
@@ -180,16 +208,16 @@ func readln(r io.Reader) (string, error) {
 	return strings.TrimSpace(line), nil
 }
 
-func readpass(_ context.Context) (string, error) {
-	stdin := int(os.Stdin.Fd())
+func readpass(_ context.Context, r *os.File) (string, error) {
+	fd := int(r.Fd())
 
-	oldState, err := term.MakeRaw(stdin)
+	oldState, err := term.MakeRaw(fd)
 	if err != nil {
 		return "", err
 	}
-	defer term.Restore(stdin, oldState)
+	defer term.Restore(fd, oldState)
 
-	bytePwd, err := term.ReadPassword(stdin)
+	bytePwd, err := term.ReadPassword(fd)
 	if err != nil {
 		return "", err
 	}

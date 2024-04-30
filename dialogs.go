@@ -32,7 +32,7 @@ func (c *Client) GetEntities(ctx context.Context, filterFn FilterFunc) ([]Entity
 		return nil, err
 	}
 
-	peerIter, err := c.storage.Iterate(ctx)
+	peerIter, err := c.peerStrg.Iterate(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +67,7 @@ func (c *Client) ensureStoragePopulated(ctx context.Context) error {
 		GetDialogs().
 		BatchSize(defBatchSize).
 		Iter()
-	if err := storage.CollectPeers(c.storage).Dialogs(ctx, dlgIter); err != nil {
+	if err := storage.CollectPeers(c.peerStrg).Dialogs(ctx, dlgIter); err != nil {
 		return err
 	}
 	if err := c.cache.SetWithExpire(cacheDlgStorage, true, defCacheEvict); err != nil {
