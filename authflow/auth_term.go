@@ -200,7 +200,7 @@ func instructions() {
 	fmt.Println()
 }
 
-func readln(r io.Reader) (string, error) {
+var readln = func(r io.Reader) (string, error) {
 	line, err := bufio.NewReader(r).ReadString('\n')
 	if err != nil {
 		return "", err

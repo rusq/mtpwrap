@@ -68,13 +68,13 @@ func TestTermAuth_Phone(t *testing.T) {
 			"phone is not set, not intl format",
 			fields{phone: ""},
 			args{context.Background()},
-			"123\n+64221234567",
+			"123\n+64221234567\n",
 			strcls + phoneWelcome + phonePrompt + phoneMustIntl + "\n" + phonePrompt,
 			"+64221234567",
 			false,
 		},
 		{
-			"phone is not set, not intl format",
+			"phone is not set, non-digit chars",
 			fields{phone: ""},
 			args{context.Background()},
 			"+64 22 123 45 67\n+64221234567",
@@ -90,7 +90,7 @@ func TestTermAuth_Phone(t *testing.T) {
 				phone:    tt.fields.phone,
 			}
 
-			cap := StartCapture(t, tt.input)
+			cap := StartCapture(t, strings.Split(tt.input, "\n")...)
 			got, err := a.Phone(tt.args.in0)
 			output := cap.StopCapture()
 
@@ -105,46 +105,50 @@ func TestTermAuth_Phone(t *testing.T) {
 }
 
 type captor struct {
-	r      *os.File
-	w      *os.File
-	oldOut *os.File
-	oldIn  *os.File
+	r         *os.File
+	w         *os.File
+	oldOut    *os.File
+	oldReadln func(r io.Reader) (string, error)
 }
 
 // StartCapture starts capturing output. If input is not empty, it will also
 // capture input and write it to the program's stdin.
-func StartCapture(t *testing.T, input string) *captor {
+func StartCapture(t *testing.T, input ...string) *captor {
 	t.Helper()
 
-	r, w, _ := os.Pipe()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
 	oldOut := hOutput
-	oldIn := hInput
+	oldIn := readln
 
 	hOutput = w
 
 	if len(input) > 0 {
-		r2, w2, _ := os.Pipe()
-		hInput = r2
-		go func() {
-			lines := strings.Split(input, "\n")
-			for _, line := range lines {
-				n, err := w2.WriteString(line + "\n")
-				if err != nil {
-					t.Log(err)
-				} else {
-					t.Logf("captureOutput: wrote %d bytes\n", n)
-				}
-			}
-			w2.WriteString("\n")
-			w2.Close()
-		}()
+		readln = mkTestReadln(input...)
 	}
 
 	return &captor{
-		r:      r,
-		w:      w,
-		oldOut: oldOut,
-		oldIn:  oldIn,
+		r:         r,
+		w:         w,
+		oldOut:    oldOut,
+		oldReadln: oldIn,
+	}
+}
+
+func mkTestReadln(input ...string) func(io.Reader) (string, error) {
+	if len(input) == 0 {
+		return func(r io.Reader) (string, error) { return "", nil }
+	}
+	var i = 0
+	return func(r io.Reader) (string, error) {
+		if i >= len(input) {
+			return "", io.EOF
+		}
+		ret := input[i]
+		i++
+		return ret, nil
 	}
 }
 
@@ -154,7 +158,8 @@ func (c *captor) StopCapture() string {
 	var buf bytes.Buffer
 	io.Copy(&buf, c.r)
 	os.Stdout = c.oldOut
-	os.Stdin = c.oldIn
+	readln = c.oldReadln
+
 	return buf.String()
 }
 
