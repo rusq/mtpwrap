@@ -155,13 +155,18 @@ func New(ctx context.Context, appID int, appHash string, opts ...Option) (*Clien
 		creds, err = c.loadCredentials(ctx)
 		if err != nil {
 			return nil, err
+		} else if creds.IsEmpty() {
+			return nil, ErrNoCredentials
 		}
 	}
 
 	c.cl = telegram.NewClient(creds.ID, creds.Hash, c.telegramOpts)
+	c.creds = creds
 
 	return &c, nil
 }
+
+var ErrNoCredentials = errors.New("no credentials")
 
 func (c *Client) loadCredentials(ctx context.Context) (creds, error) {
 	var err error
@@ -189,6 +194,9 @@ func (c *Client) Start(ctx context.Context) error {
 	if c.stop != nil {
 		return ErrAlreadyRunning
 	}
+	if c.creds.IsEmpty() {
+		return ErrNoCredentials
+	}
 
 	stop, err := bg.Connect(c.cl)
 	if err != nil {
@@ -206,16 +214,12 @@ func (c *Client) Start(ctx context.Context) error {
 	Log.Debug("auth success")
 
 	// try and save credentials now that we're sure they're correct.
-	if err := c.saveCreds(); err != nil {
+	if err := c.credsStrg.Save(c.creds); err != nil {
 		// not a fatal error
 		Log.Printf("failed to save credentials: %s, but nevermind let's continue", err)
 	}
 
 	return nil
-}
-
-func (c *Client) saveCreds() error {
-	return c.credsStrg.Save(c.creds)
 }
 
 func (e *ErrAuth) Error() string {
