@@ -166,7 +166,10 @@ func New(ctx context.Context, appID int, appHash string, opts ...Option) (*Clien
 	return &c, nil
 }
 
-var ErrNoCredentials = errors.New("no credentials")
+var (
+	ErrNoCredentials = errors.New("no credentials")
+	ErrExit          = errors.New("exit")
+)
 
 func (c *Client) loadCredentials(ctx context.Context) (creds, error) {
 	var err error
@@ -178,8 +181,8 @@ func (c *Client) loadCredentials(ctx context.Context) (creds, error) {
 	creds.ID, creds.Hash, err = c.auth.GetAPICredentials(ctx)
 	if err != nil {
 		fmt.Println()
-		if errors.Is(io.EOF, err) {
-			return creds, errors.New("exit")
+		if errors.Is(err, io.EOF) {
+			return creds, ErrExit
 		}
 		return creds, err
 	}
