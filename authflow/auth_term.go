@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -65,6 +66,11 @@ Enter phone in international format, no spaces, for example +6422123456
 	phoneOnlyDigits = "*** Phone number must contain only digits and + sign. ***"
 )
 
+var (
+	validRe   = regexp.MustCompile(`^\+[1-9]{1}[0-9]{7,15}$`)
+	sanitiser = strings.NewReplacer(" ", "", "-", "", "(", "", ")", "")
+)
+
 func (a TermAuth) Phone(_ context.Context) (string, error) {
 	clrscr(hOutput)
 	if a.phone != "" {
@@ -77,20 +83,44 @@ func (a TermAuth) Phone(_ context.Context) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if phone == "" {
-			fmt.Fprintln(hOutput, phoneInvalid)
-			continue
+		// phone = sanitiser.Replace(strings.TrimSpace(phone))
+		res := checkPhone(phone)
+		if res == resOK {
+			return phone, nil
 		}
-		if !strings.HasPrefix(phone, "+") || len(phone) < 2 {
-			fmt.Fprintln(hOutput, phoneMustIntl)
-			continue
+		msg, ok := validateMessages[res]
+		if !ok {
+			msg = "Unknown error"
 		}
-		if _, err := strconv.Atoi(phone[1:]); err != nil {
-			fmt.Fprintln(hOutput, phoneOnlyDigits)
-			continue
-		}
-		return phone, nil
+		fmt.Fprintln(hOutput, msg)
 	}
+}
+
+const (
+	resOK = iota
+	resInvalid
+	resMustIntl
+	resOnlyDigits
+)
+
+var validateMessages = map[int]string{
+	resOK:         "",
+	resInvalid:    phoneInvalid,
+	resMustIntl:   phoneMustIntl,
+	resOnlyDigits: phoneOnlyDigits,
+}
+
+func checkPhone(phone string) (result int) {
+	if phone == "" {
+		return resInvalid
+	}
+	if !strings.HasPrefix(phone, "+") || len(phone) < 2 {
+		return resMustIntl
+	}
+	if _, err := strconv.Atoi(phone[1:]); err != nil {
+		return resOnlyDigits
+	}
+	return resOK
 }
 
 func (a TermAuth) Password(ctx context.Context) (string, error) {
@@ -191,8 +221,8 @@ func instructions() {
 		"\t4.  Click <Create Application> button.\n\n",
 		underline.Sprint("App title"), underline.Sprint("Short Name"), underline.Sprint("URL"),
 		underline.Sprint("Desktop"))
-	fmt.Printf("You will see the App '%s' and App '%s' values that you will need to\n"+
-		"enter shortly.  This application will encrypt and save the credentials on your\ndevice.  You can delete them any time starting with -reset flag.\n\n",
+	fmt.Printf("You will see the App '%s' and App '%s' values that you will need\n"+
+		"to enter shortly.  This application will encrypt and save the credentials on your\ndevice.  You can delete them any time starting with -reset flag.\n\n",
 		param.Sprint(" api_id "), param.Sprint(" api_hash "))
 	warn.Printf("VERY IMPORTANT: This is the key to your account, keep it secret, never share\n" +
 		"it with anyone, never publish it online.\n")
