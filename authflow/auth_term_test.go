@@ -208,3 +208,59 @@ func Test_readln(t *testing.T) {
 		})
 	}
 }
+
+func Test_sanitisePhone(t *testing.T) {
+	type args struct {
+		phone string
+	}
+	tests := []struct {
+		name          string
+		args          args
+		wantSanitised string
+		wantResult    int
+	}{
+		{
+			name:          "ok",
+			args:          args{"+64221234567"},
+			wantSanitised: "+64221234567",
+			wantResult:    resOK,
+		},
+		{
+			name:          "sanitises",
+			args:          args{"+64 (22) 123 45-67"},
+			wantSanitised: "+64221234567",
+			wantResult:    resOK,
+		},
+		{
+			name:          "local number",
+			args:          args{"0221234567"},
+			wantSanitised: "0221234567",
+			wantResult:    resMustIntl,
+		},
+		{
+			name:          "too short",
+			args:          args{"112"},
+			wantSanitised: "112",
+			wantResult:    resMustIntl,
+		},
+		{
+			name: "Invalid format",
+			args: args{
+				phone: "+1800NOUTURN",
+			},
+			wantSanitised: "+1800NOUTURN",
+			wantResult:    resOnlyDigits,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotSanitised, gotResult := sanitisePhone(tt.args.phone)
+			if gotSanitised != tt.wantSanitised {
+				t.Errorf("sanitisePhone() gotSanitised = %v, want %v", gotSanitised, tt.wantSanitised)
+			}
+			if gotResult != tt.wantResult {
+				t.Errorf("sanitisePhone() gotResult = %v, want %v", gotResult, tt.wantResult)
+			}
+		})
+	}
+}

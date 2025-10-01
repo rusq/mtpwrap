@@ -66,11 +66,6 @@ Enter phone in international format, no spaces, for example +6422123456
 	phoneOnlyDigits = "*** Phone number must contain only digits and + sign. ***"
 )
 
-var (
-	validRe   = regexp.MustCompile(`^\+[1-9]{1}[0-9]{7,15}$`)
-	sanitiser = strings.NewReplacer(" ", "", "-", "", "(", "", ")", "")
-)
-
 func (a TermAuth) Phone(_ context.Context) (string, error) {
 	clrscr(hOutput)
 	if a.phone != "" {
@@ -109,6 +104,11 @@ var validateMessages = map[int]string{
 	resOnlyDigits: phoneOnlyDigits,
 }
 
+var (
+	validPhoneRE = regexp.MustCompile(`^\+[1-9]{1}[0-9]{7,15}$`)
+	sanitiser    = strings.NewReplacer(" ", "", "-", "", "(", "", ")", "")
+)
+
 func sanitisePhone(phone string) (sanitised string, result int) {
 	phone = sanitiser.Replace(strings.TrimSpace(phone))
 	if phone == "" {
@@ -117,7 +117,7 @@ func sanitisePhone(phone string) (sanitised string, result int) {
 	if !strings.HasPrefix(phone, "+") || len(phone) < 2 {
 		return phone, resMustIntl
 	}
-	if _, err := strconv.Atoi(phone[1:]); err != nil {
+	if !validPhoneRE.MatchString(phone) {
 		return phone, resOnlyDigits
 	}
 	return phone, resOK
