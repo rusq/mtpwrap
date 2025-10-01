@@ -83,14 +83,13 @@ func (a TermAuth) Phone(_ context.Context) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		// phone = sanitiser.Replace(strings.TrimSpace(phone))
-		res := checkPhone(phone)
+		sanitised, res := sanitisePhone(phone)
 		if res == resOK {
-			return phone, nil
+			return sanitised, nil
 		}
 		msg, ok := validateMessages[res]
 		if !ok {
-			msg = "Unknown error"
+			msg = "Unknown error."
 		}
 		fmt.Fprintln(hOutput, msg)
 	}
@@ -110,17 +109,18 @@ var validateMessages = map[int]string{
 	resOnlyDigits: phoneOnlyDigits,
 }
 
-func checkPhone(phone string) (result int) {
+func sanitisePhone(phone string) (sanitised string, result int) {
+	phone = sanitiser.Replace(strings.TrimSpace(phone))
 	if phone == "" {
-		return resInvalid
+		return phone, resInvalid
 	}
 	if !strings.HasPrefix(phone, "+") || len(phone) < 2 {
-		return resMustIntl
+		return phone, resMustIntl
 	}
 	if _, err := strconv.Atoi(phone[1:]); err != nil {
-		return resOnlyDigits
+		return phone, resOnlyDigits
 	}
-	return resOK
+	return phone, resOK
 }
 
 func (a TermAuth) Password(ctx context.Context) (string, error) {
